@@ -10,21 +10,15 @@ on:
       - 'backend/**'
       - '.github/workflows/backend_ci.yml'
 
-# Global env (safe defaults)
+# Accept either ACR server or name from Secrets/Variables
 env:
-  # Accept EITHER login server (sit722week08.azurecr.io) OR name (sit722week08)
-  # Put one of these in:  Settings → Secrets and variables → Actions → Secrets
-  #   AZURE_CONTAINER_REGISTRY = sit722week08.azurecr.io  (recommended)
-  # or AZURE_CONTAINER_REGISTRY = sit722week08
-  ACR_INPUT: ${{ secrets.AZURE_CONTAINER_REGISTRY }}
-
-  # Image tag (unique per run)
+  ACR_SERVER_INPUT: ${{ secrets.ACR_LOGIN_SERVER || vars.ACR_LOGIN_SERVER }}   # e.g., sit722week08.azurecr.io
+  ACR_NAME_INPUT:   ${{ secrets.ACR_NAME || vars.ACR_NAME }}                   # e.g., sit722week08
   IMAGE_TAG: ${{ github.sha }}-${{ github.run_id }}
 
 jobs:
   test_and_lint_backends:
     runs-on: ubuntu-latest
-
     services:
       product_db:
         image: postgres:15
@@ -38,7 +32,6 @@ jobs:
           --health-timeout 5s
           --health-retries 5
         ports: [ "5432:5432" ]
-
       order_db:
         image: postgres:15
         env:
@@ -51,16 +44,12 @@ jobs:
           --health-timeout 5s
           --health-retries 5
         ports: [ "5433:5432" ]
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Python 3.10
         uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
+        with: { python-version: '3.10' }
       - name: Install dependencies
         run: |
           pip install --upgrade pip
@@ -69,7 +58,6 @@ jobs:
             pip install -r "$req"
           done
           pip install pytest httpx
-
       - name: Run product_service tests
         working-directory: backend/product_service
         env:
@@ -78,9 +66,7 @@ jobs:
           POSTGRES_DB: products
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-        run: |
-          pytest tests --maxfail=1 --disable-warnings -q
-
+        run: pytest tests --maxfail=1 --disable-warnings -q
       - name: Run order_service tests
         working-directory: backend/order_service
         env:
@@ -89,64 +75,55 @@ jobs:
           POSTGRES_DB: orders
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-        run: |
-          pytest tests --maxfail=1 --disable-warnings -q
+        run: pytest tests --maxfail=1 --disable-warnings -q
 
   build_and_push_images:
     runs-on: ubuntu-latest
     needs: test_and_lint_backends
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Azure login using the Service Principal JSON
       - name: Azure Login
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # Resolve ACR name/server from ACR_INPUT, and export env for later steps
+      # Resolve ACR name/server from the provided inputs
       - name: Resolve ACR values
         run: |
-          if [ -z "${ACR_INPUT}" ]; then
-            echo "ERROR: Secret AZURE_CONTAINER_REGISTRY is not set." >&2
+          ACR_SERVER="${ACR_SERVER_INPUT}"
+          ACR_NAME="${ACR_NAME_INPUT}"
+
+          if [ -z "$ACR_NAME" ] && [ -n "$ACR_SERVER" ]; then
+            ACR_NAME="${ACR_SERVER%%.azurecr.io}"
+          fi
+          if [ -z "$ACR_SERVER" ] && [ -n "$ACR_NAME" ]; then
+            ACR_SERVER="${ACR_NAME}.azurecr.io"
+          fi
+          if [ -z "$ACR_NAME" ] || [ -z "$ACR_SERVER" ]; then
+            echo "ERROR: Please set either ACR_LOGIN_SERVER (e.g. sit722week08.azurecr.io) or ACR_NAME (e.g. sit722week08) as a secret/variable." >&2
             exit 1
           fi
+          echo "ACR_NAME=$ACR_NAME"     >> $GITHUB_ENV
+          echo "ACR_SERVER=$ACR_SERVER" >> $GITHUB_ENV
+          echo "Using ACR_NAME=$ACR_NAME, ACR_SERVER=$ACR_SERVER"
 
-          if [[ "${ACR_INPUT}" == *".azurecr.io" ]]; then
-            ACR_SERVER="${ACR_INPUT}"
-            ACR_NAME="${ACR_INPUT%%.azurecr.io}"
-          else
-            ACR_NAME="${ACR_INPUT}"
-            ACR_SERVER="${ACR_INPUT}.azurecr.io"
-          fi
-
-          echo "Using ACR_NAME=${ACR_NAME}"
-          echo "Using ACR_SERVER=${ACR_SERVER}"
-
-          echo "ACR_NAME=${ACR_NAME}"     >> $GITHUB_ENV
-          echo "ACR_SERVER=${ACR_SERVER}" >> $GITHUB_ENV
-
-      # az acr login requires the *registry name*, not the login server
       - name: Login to Azure Container Registry
         run: az acr login --name "$ACR_NAME"
 
-      # Build & push product_service
       - name: Build and Push Product Service Image
         run: |
           docker build -t "${ACR_SERVER}/product_service:${IMAGE_TAG}" ./backend/product_service/
           docker push "${ACR_SERVER}/product_service:${IMAGE_TAG}"
-          # also tag 'latest' if you want
-          docker tag "${ACR_SERVER}/product_service:${IMAGE_TAG}" "${ACR_SERVER}/product_service:latest"
+          docker tag  "${ACR_SERVER}/product_service:${IMAGE_TAG}" "${ACR_SERVER}/product_service:latest"
           docker push "${ACR_SERVER}/product_service:latest"
 
-      # Build & push order_service
       - name: Build and Push Order Service Image
         run: |
           docker build -t "${ACR_SERVER}/order_service:${IMAGE_TAG}" ./backend/order_service/
           docker push "${ACR_SERVER}/order_service:${IMAGE_TAG}"
-          docker tag "${ACR_SERVER}/order_service:${IMAGE_TAG}" "${ACR_SERVER}/order_service:latest"
+          docker tag  "${ACR_SERVER}/order_service:${IMAGE_TAG}" "${ACR_SERVER}/order_service:latest"
           docker push "${ACR_SERVER}/order_service:latest"
 
       - name: Logout from Azure
