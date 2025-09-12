@@ -196,4 +196,5 @@ cython_debug/
 .cursorignore
 .cursorindexingignores p - c r e d . j s o n 
  
- sp-cred.json
+sp-cred.json
+**/sp-cred.json
