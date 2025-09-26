@@ -85,15 +85,26 @@ jobs:
             kubectl create namespace w08-dev
           fi
 
-      # 9️⃣ Deploy all manifests to AKS
-      - name: Deploy All to AKS
-        run: |
-          kubectl config set-context --current --namespace=w08-dev
-          kubectl apply -f k8s/ --recursive
+      # 9️⃣ Deploy all manifests
+      - name: Apply Kubernetes manifests
+        run: kubectl apply -f k8s/ -n w08-dev
 
-      # 🔟 Wait for deployments to roll out
-      - name: Wait for Rollouts
+      # 🔟 Update deployments with new images
+      - name: Update Backend & Frontend Images
         run: |
-          kubectl rollout status deployment/product-service-w08e1 -n w08-dev
-          kubectl rollout status deployment/order-service-w08e1 -n w08-dev
-          kubectl rollout status deployment/frontend-w08e1 -n w08-dev
+          kubectl set image deployment/product-service-w08e1 product-service-container=${ACR_SERVER}/product_service:${GITHUB_SHA} -n w08-dev
+          kubectl set image deployment/order-service-w08e1 order-service-container=${ACR_SERVER}/order_service:${GITHUB_SHA} -n w08-dev
+          kubectl set image deployment/frontend-w08e1 frontend-container=${ACR_SERVER}/frontend:${GITHUB_SHA} -n w08-dev
+
+      # 1️⃣1️⃣ Wait for product-service rollout
+      - name: Wait for product-service rollout
+        run: |
+          kubectl rollout status deployment/product-service-w08e1 -n w08-dev --timeout=60s
+
+      # 1️⃣2️⃣ Debug if rollout fails
+      - name: Debug if rollout fails
+        if: failure()
+        run: |
+          kubectl get pods -n w08-dev -o wide
+          kubectl describe deployment product-service-w08e1 -n w08-dev
+          kubectl describe pods -n w08-dev
