@@ -89,11 +89,16 @@ jobs:
       - name: Deploy All to AKS
         run: |
           kubectl config set-context --current --namespace=w08-dev
+          # Replace image tags dynamically in YAML before applying
+          sed -i "s|product_service:latest|product_service:${GITHUB_SHA}|g" k8s/product-service.yaml
+          sed -i "s|order_service:latest|order_service:${GITHUB_SHA}|g" k8s/order-service.yaml
+          sed -i "s|frontend:latest|frontend:${GITHUB_SHA}|g" k8s/frontend/frontend.yaml
+
           kubectl apply -f k8s/ --recursive
 
-      # 🔟 Update deployments with new images
-      - name: Update Backend & Frontend Images
+      # 🔟 (Optional) Wait for deployments to be ready
+      - name: Wait for deployments
         run: |
-          kubectl set image deployment/product-service product-service=${ACR_SERVER}/product_service:${GITHUB_SHA} --record
-          kubectl set image deployment/order-service order-service=${ACR_SERVER}/order_service:${GITHUB_SHA} --record
-          kubectl set image deployment/frontend frontend=${ACR_SERVER}/frontend:${GITHUB_SHA} --record
+          kubectl rollout status deployment/product-service -n w08-dev
+          kubectl rollout status deployment/order-service -n w08-dev
+          kubectl rollout status deployment/frontend -n w08-dev
