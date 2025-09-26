@@ -78,6 +78,13 @@ jobs:
           resource-group: DefaultResourceGroup-ASE
           cluster-name: week92c
 
+      # 7a️⃣ Ensure AKS SP can pull images from ACR
+      - name: Ensure AKS has ACR pull role
+        run: |
+          AKS_SP=$(az aks show -g DefaultResourceGroup-ASE -n week92c --query "identity.principalId" -o tsv)
+          ACR_ID=$(az acr show -n $ACR_NAME --query "id" -o tsv)
+          az role assignment create --assignee $AKS_SP --role acrpull --scope $ACR_ID || echo "Role already assigned"
+
       # 8️⃣ Create namespace if it doesn't exist
       - name: Create namespace if missing
         run: |
@@ -96,10 +103,12 @@ jobs:
           kubectl set image deployment/order-service-w08e1 order-service-container=${ACR_SERVER}/order_service:${GITHUB_SHA} -n w08-dev
           kubectl set image deployment/frontend frontend-container=${ACR_SERVER}/frontend:${GITHUB_SHA} -n w08-dev
 
-      # 1️⃣1️⃣ Wait for product-service rollout
-      - name: Wait for product-service rollout
+      # 1️⃣1️⃣ Wait for all rollouts
+      - name: Wait for all rollouts
         run: |
-          kubectl rollout status deployment/product-service-w08e1 -n w08-dev --timeout=60s
+          kubectl rollout status deployment/product-service-w08e1 -n w08-dev --timeout=120s
+          kubectl rollout status deployment/order-service-w08e1 -n w08-dev --timeout=120s
+          kubectl rollout status deployment/frontend -n w08-dev --timeout=120s
 
       # 1️⃣2️⃣ Debug if rollout fails
       - name: Debug if rollout fails
@@ -107,4 +116,5 @@ jobs:
         run: |
           kubectl get pods -n w08-dev -o wide
           kubectl describe deployment product-service-w08e1 -n w08-dev
-          kubectl describe pods -n w08-dev
+          kubectl describe deployment order-service-w08e1 -n w08-dev
+          kubectl describe deployment frontend -n w08-dev
