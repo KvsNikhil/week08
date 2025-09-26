@@ -78,13 +78,20 @@ jobs:
           resource-group: DefaultResourceGroup-ASE
           cluster-name: week92c
 
-      # 8️⃣ Deploy all manifests to AKS
+      # 8️⃣ Create namespace if it doesn't exist
+      - name: Create namespace if missing
+        run: |
+          if ! kubectl get namespace w08-dev >/dev/null 2>&1; then
+            kubectl create namespace w08-dev
+          fi
+
+      # 9️⃣ Deploy all manifests to AKS
       - name: Deploy All to AKS
         run: |
           kubectl config set-context --current --namespace=w08-dev
           kubectl apply -f k8s/ --recursive
 
-      # 9️⃣ Update deployments with new images
+      # 🔟 Update deployments with new images
       - name: Update Backend & Frontend Images
         run: |
           kubectl set image deployment/product-service product-service=${ACR_SERVER}/product_service:${GITHUB_SHA} --record
