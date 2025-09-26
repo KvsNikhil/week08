@@ -1,0 +1,77 @@
+name: CI – Build & Push (backend + frontend)
+
+on:
+  push:
+    branches: [ dev, main ]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'k8s/**'
+      - '.github/workflows/**'
+  pull_request:
+    branches: [ dev, main ]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ACR_LOGIN_SERVER: ${{ secrets.AZURE_CONTAINER_REGISTRY }}
+  IMAGE_TAG: ${{ github.sha }}-${{ github.run_id }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [ product_service, order_service, frontend ]
+
+    steps:
+      # 1️⃣ Checkout repo
+      - uses: actions/checkout@v4
+
+      # 2️⃣ Azure login
+      - name: Azure Login (SP secret)
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # 3️⃣ ACR login
+      - name: Docker login to ACR
+        run: |
+          az acr login --name ${{ secrets.AZURE_CONTAINER_REGISTRY }}
+
+      # 4️⃣ Debug paths (optional, helpful if things fail again)
+      - name: Debug paths
+        run: |
+          pwd
+          ls -R
+
+      # 5️⃣ Build & Push Backend Services
+      - name: Build & Push backend image (${{ matrix.service }})
+        if: matrix.service == 'order_service' || matrix.service == 'product_service'
+        run: |
+          docker buildx build \
+            --cache-from=type=gha \
+            --cache-to=type=gha,mode=max \
+            --push \
+            --tag ${{ env.ACR_LOGIN_SERVER }}/${{ matrix.service }}:${{ env.IMAGE_TAG }} \
+            --tag ${{ env.ACR_LOGIN_SERVER }}/${{ matrix.service }}:latest \
+            ./backend/${{ matrix.service }}
+
+      # 6️⃣ Build & Push Frontend
+      - name: Build & Push frontend image
+        if: matrix.service == 'frontend'
+        run: |
+          docker buildx build \
+            --cache-from=type=gha \
+            --cache-to=type=gha,mode=max \
+            --push \
+            --tag ${{ env.ACR_LOGIN_SERVER }}/frontend:${{ env.IMAGE_TAG }} \
+            --tag ${{ env.ACR_LOGIN_SERVER }}/frontend:latest \
+            ./frontend
+
+      # 7️⃣ Logout for security.  
+      - name: Logout from Azure
+        run: az logout
+        if: always()
