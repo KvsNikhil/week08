@@ -94,7 +94,7 @@ jobs:
         run: |
           kubectl set image deployment/product-service-w08e1 product-service-container=${ACR_SERVER}/product_service:${GITHUB_SHA} -n w08-dev
           kubectl set image deployment/order-service-w08e1 order-service-container=${ACR_SERVER}/order_service:${GITHUB_SHA} -n w08-dev
-          kubectl set image deployment/frontend-w08e1 frontend-container=${ACR_SERVER}/frontend:${GITHUB_SHA} -n w08-dev
+          kubectl set image deployment/frontend frontend-container=${ACR_SERVER}/frontend:${GITHUB_SHA} -n w08-dev
 
       # 1️⃣1️⃣ Wait for product-service rollout
       - name: Wait for product-service rollout
