@@ -85,21 +85,15 @@ jobs:
             kubectl create namespace w08-dev
           fi
 
-       # 9️⃣ Deploy all manifests to AKS
+      # 9️⃣ Deploy all manifests to AKS
       - name: Deploy All to AKS
         run: |
           kubectl config set-context --current --namespace=w08-dev
-
-          # Replace image tags dynamically in YAML before applying
-          sed -i "s|product_service:latest|product_service:${GITHUB_SHA}|g" k8s/product-service.yaml
-          sed -i "s|order_service:latest|order_service:${GITHUB_SHA}|g" k8s/order-service.yaml
-          sed -i "s|frontend:latest|frontend:${GITHUB_SHA}|g" k8s/frontend.yaml
-
           kubectl apply -f k8s/ --recursive
 
-      # 🔟 (Optional) Wait for deployments to be ready
-      - name: Wait for deployments
+      # 🔟 Wait for deployments to roll out
+      - name: Wait for Rollouts
         run: |
-          kubectl rollout status deployment/product-service -n w08-dev
-          kubectl rollout status deployment/order-service -n w08-dev
-          kubectl rollout status deployment/frontend -n w08-dev
+          kubectl rollout status deployment/product-service-w08e1 -n w08-dev
+          kubectl rollout status deployment/order-service-w08e1 -n w08-dev
+          kubectl rollout status deployment/frontend-w08e1 -n w08-dev
