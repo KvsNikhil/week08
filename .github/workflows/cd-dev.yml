@@ -6,7 +6,18 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  deploy:
+  deploy-backend:
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: dev
+      namespace: w08-dev
+      image_tag: ${{ github.sha }}
+      aks_cluster_name: week92c
+      aks_resource_group: DefaultResourceGroup-ASE
+    secrets: inherit
+
+  deploy-frontend:
+    needs: deploy-backend
     uses: ./.github/workflows/deploy.yml
     with:
       environment: dev
