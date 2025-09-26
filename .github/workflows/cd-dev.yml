@@ -1,19 +1,46 @@
-name: CD - Dev
+# .github/workflows/deploy.yml
+name: Deploy to AKS
 
 on:
-  push:
-    branches: [ dev ]
-  workflow_dispatch: {}
-
-concurrency:
-  group: cd-dev
-  cancel-in-progress: true
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      namespace:
+        required: true
+        type: string
+      image_tag:
+        required: true
+        type: string
+    secrets:
+      AZURE_CREDENTIALS:
+        required: true
 
 jobs:
-  deploy:
-    uses: ./.github/workflows/deploy.yml
-    with:
-      environment: dev
-      namespace: w08-dev
-      image_tag: ${{ github.sha }}
-    secrets: inherit
+  deploy-to-aks:
+    runs-on: ubuntu-latest
+    steps:
+      # 1️⃣ Checkout repo
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # 2️⃣ Login to Azure
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # 3️⃣ Set AKS context
+      - name: Set AKS context
+        uses: azure/aks-set-context@v3
+        with:
+          resource-group: DefaultResourceGroup-ASE
+          cluster-name: week92c
+
+      # 4️⃣ Deploy Kubernetes manifests
+      - name: Deploy to AKS
+        run: |
+          kubectl config set-context --current --namespace=${{ inputs.namespace }}
+          kubectl apply -f k8s-manifests/  # adjust to your manifest folder
+          kubectl set image deployment/my-app my-app=${{ inputs.image_tag }} --record
