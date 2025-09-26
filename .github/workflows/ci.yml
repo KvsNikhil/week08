@@ -6,7 +6,7 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  deploy-backend:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       # 1️⃣ Checkout repo
@@ -62,64 +62,6 @@ jobs:
           docker tag "${ACR_SERVER}/order_service:${IMAGE_TAG}" "${ACR_SERVER}/order_service:latest"
           docker push "${ACR_SERVER}/order_service:latest"
 
-      # 6️⃣ Set AKS context
-      - name: Set AKS context
-        uses: azure/aks-set-context@v3
-        with:
-          resource-group: DefaultResourceGroup-ASE
-          cluster-name: week92c
-
-      # 7️⃣ Deploy backend to AKS
-      - name: Deploy Backend to AKS
-        run: |
-          kubectl config set-context --current --namespace=w08-dev
-          kubectl apply -f k8s/backend/  # adjust path to your backend manifests
-          kubectl set image deployment/product-service product-service=${ACR_SERVER}/product_service:${GITHUB_SHA} --record
-          kubectl set image deployment/order-service order-service=${ACR_SERVER}/order_service:${GITHUB_SHA} --record
-
-  deploy-frontend:
-    needs: deploy-backend
-    runs-on: ubuntu-latest
-    steps:
-      # 1️⃣ Checkout repo
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # 2️⃣ Azure login
-      - name: Azure Login
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      # 3️⃣ Resolve ACR variables
-      - name: Resolve ACR values
-        shell: bash
-        run: |
-          ACR_SERVER="${{ secrets.ACR_LOGIN_SERVER || vars.ACR_LOGIN_SERVER || secrets.AZURE_CONTAINER_REGISTRY || vars.AZURE_CONTAINER_REGISTRY }}"
-          ACR_NAME="${{ secrets.ACR_NAME || vars.ACR_NAME }}"
-          if [ -z "$ACR_NAME" ] && [ -n "$ACR_SERVER" ]; then
-            ACR_NAME="${ACR_SERVER%%.azurecr.io}"
-          fi
-          if [ -z "$ACR_SERVER" ] && [ -n "$ACR_NAME" ]; then
-            ACR_SERVER="${ACR_NAME}.azurecr.io"
-          fi
-          echo "ACR_NAME=$ACR_NAME" >> $GITHUB_ENV
-          echo "ACR_SERVER=$ACR_SERVER" >> $GITHUB_ENV
-
-      # 4️⃣ Login to ACR
-      - name: Login to ACR
-        run: az acr login --name $ACR_NAME
-
-      # 5️⃣ Inject backend IPs into frontend main.js
-      - name: Inject Backend IPs
-        run: |
-          # Replace these with your actual backend service IPs or use outputs from backend deployment
-          PRODUCT_API_IP="http://PRODUCT_IP:8000"
-          ORDER_API_IP="http://ORDER_IP:8001"
-
-          sed -i "s|_PRODUCT_API_URL_|$PRODUCT_API_IP|g" frontend/main.js
-          sed -i "s|_ORDER_API_URL_|$ORDER_API_IP|g" frontend/main.js
-
       # 6️⃣ Build & push frontend image
       - name: Build & Push Frontend
         run: |
@@ -136,9 +78,15 @@ jobs:
           resource-group: DefaultResourceGroup-ASE
           cluster-name: week92c
 
-      # 8️⃣ Deploy frontend to AKS
-      - name: Deploy Frontend
+      # 8️⃣ Deploy all manifests to AKS
+      - name: Deploy All to AKS
         run: |
           kubectl config set-context --current --namespace=w08-dev
-          kubectl apply -f k8s/frontend/frontend.yaml
+          kubectl apply -f k8s/ --recursive
+
+      # 9️⃣ Update deployments with new images
+      - name: Update Backend & Frontend Images
+        run: |
+          kubectl set image deployment/product-service product-service=${ACR_SERVER}/product_service:${GITHUB_SHA} --record
+          kubectl set image deployment/order-service order-service=${ACR_SERVER}/order_service:${GITHUB_SHA} --record
           kubectl set image deployment/frontend frontend=${ACR_SERVER}/frontend:${GITHUB_SHA} --record
