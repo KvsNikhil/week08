@@ -5,19 +5,12 @@ on:
     branches: [ dev ]
   workflow_dispatch: {}
 
-jobs:
-  deploy-backend:
-    uses: ./.github/workflows/deploy.yml
-    with:
-      environment: dev
-      namespace: w08-dev
-      image_tag: ${{ github.sha }}
-      aks_cluster_name: week92c
-      aks_resource_group: DefaultResourceGroup-ASE
-    secrets: inherit
+concurrency:
+  group: cd-dev
+  cancel-in-progress: true
 
-  deploy-frontend:
-    needs: deploy-backend
+jobs:
+  deploy:
     uses: ./.github/workflows/deploy.yml
     with:
       environment: dev
